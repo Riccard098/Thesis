@@ -1,0 +1,319 @@
+#Script single-season single-species occupancy model per sciacallo dalla gualdrappa. 
+#Per prima cosa carico una serie di libraries che utilizzerò nell'analisi
+library(unmarked)
+library(ggplot2)
+library(dplyr)
+library(usdm)
+library(AICcmodavg)
+library(MuMIn)
+library(lmtest)
+library(ggpubr)
+library(readr)
+
+
+#Assegno i valori di sampling effort per il periodo di studio, il numero di siti occupati dallo sciacallo, il numero totale dei siti e il numero di detection indipendenti per la specie.
+sampling.effort <-4379   #numero di giorni dello studio x numero fototrappole (52-4, ovvero 44,46, 47, 48) + 11 (gg di funzionamento della FR47)
+occu.site <- 28
+tot.site <- 52
+detections <- 170 
+#Dai valori precedent calcolo e stampo la naive occupancy e il RAI per lo sciacallo
+naive.occu <- occu.site/tot.site
+RAI <- detections/sampling.effort*100
+naive.occu
+RAI
+
+#Preparo il dataset che userò per l'analisi
+#Carico il data frame con le detection di sciacallo raggruppate per sampling occasions 
+dat <- read.table("Jackal23",header=T,sep=",",dec=",") #_# Parte di Veronica, io invece sotto
+#_#OPPURE (se questa stringa non va vai tramite l'environment --> import dataset -->
+#_#from text (readr) --> cerca il file --> imposta in basso sinistra nome "dat" e
+#_#come separatore "semicolumn")
+dat <- read_delim("Rstudio/Jackal23.csv", 
+                       +     delim = ";", escape_double = FALSE, trim_ws = TRUE)
+dat
+#Tolgo la prima colonna dei siti
+Dets <- dat[,-1]
+View(Dets)
+Dets
+#Converto il dataframe in occupancy frame
+UFO <- unmarkedFrameOccu(y = as.matrix(Dets))
+View(UFO)
+summary(UFO)
+#Carico il dataframe con le covariate ambientali
+CTTable <- read.table("environment.csv",header=T,sep=",",dec=",")
+CTTable
+#rimuovo la colonna dei siti
+environment <- CTTable[,-1]
+#Ora proseguo standardizzando le covariate ambientali.
+env <- environment %>% mutate_at(c('Elevation', 
+                                   'TPI', 
+                                   'TRI'), 
+                                 ~(scale(.) %>% as.vector))
+env
+#Carico il data frame con le covariate RAI (biologiche e antrphiche)
+bio <- read.table("rai.csv", h=T, sep=",", dec=",")
+View(bio)
+summary(bio)
+#Trasformo le colonne in valori numerici
+bio$RAI.Hare <- as.numeric(bio$RAI.Hare)
+bio$RAI.Hyen <- as.numeric(bio$RAI.Hyen)
+bio$RAI.Sprin <- as.numeric(bio$RAI.Sprin)
+
+#Standardizzo le covariate RAI
+rai <- bio %>% mutate_at(c('RAI.Hare',
+                           'RAI.Sprin', 
+                           'RAI.Hyen'),
+                         ~(scale(.) %>% as.vector))
+rai <- rai[,-1]
+View(rai)
+summary(rai)
+
+#Creo un dataframe contenente tutte le site covariates
+cov <- data.frame(env,rai)
+summary(cov)
+View(cov)
+
+#Creo un occupancy frame che contiene anche le covariate, specificando site e obs
+UFO1 <- unmarkedFrameOccu(y = Dets, siteCovs = cov, obsCovs = NULL)
+
+summary(UFO1)
+
+#############   MODELLO NULLO #####################
+#creo il primo modello: modello nullo (SENZA covariate) #-#di probablitià di occupancy e probabilità di rilevamento
+null_model <- occu(~1 ~1, data = UFO1)
+null_model
+
+#i risultati sono in logit (da +∞ a -∞), eseguo una back transformation per farle assumere un valore tra 0 e 1.
+#-#probabilità di occupancy
+null.psi <- backTransform(null_model, type = "state")
+null.psi
+# Jackal occurs at X (0.57) of the sites (slightly higher than naive occ, 0.53) #-#probabilità di rilevamento
+null.p <- backTransform(null_model, type = "det")
+null.p
+# Calcolo l'intervallo di confidenza delle probabilità di occupancy e rilevamento:
+nullCI.psi <- confint(null.psi)
+nullCI.psi
+nullCI.p <- confint(null.p)
+nullCI.p
+
+
+#     CREAZIONE DEI MODELLI INIZIALI     
+
+# A: MODELLI CON COVARIATE: DETECTION PROBABILITY (P)   
+# A1: MODELLI AMBIENTALI
+
+## Per prima cosa verifico che non vi sia multicollinearità fra le covariate. 
+#Per farlo, utilizzo il Variance Inflation Factor (VIF):
+Water <- env$Water
+TPI <- env$TPI
+TRI <- env$TRI
+Elevation <- env$Elevation
+d.df <- data.frame(Elevation, TPI, Water, TRI)
+
+vifcor(d.df) 
+
+##visto che i valori sono  minori 3, tutto ok, non c'è multicollinearità
+
+#creo modello più complesso
+m.env1 <- occu(~Elevation + TPI + TRI + Water ~1, data = UFO1)
+m.env1
+
+#Eseguo il test della GOODNESS OF FIT. Per prima cosa creo la funzione per calcolare il chi-square
+chisq <- function(fm) {
+  umf <- fm@data
+  y <- umf@y
+  y[y>1] <- 1
+  sr <- fm@sitesRemoved
+  if(length(sr)>0)
+    y <- y[-sr,,drop=FALSE]
+  fv <- fitted(fm, na.rm=TRUE)
+  y[is.na(fv)] <- NA
+  sum((y-fv)^2/(fv*(1-fv)), na.rm=TRUE)
+}
+#Eseguo la parboot function basata sul chi-square e settata a 1000 repliche
+pb <- parboot(m.env1, statistic=chisq, nsim=1000, parallel=FALSE)
+pb
+
+#Continuo semplificando il modello più complesso andando a rimuovere a una a una 
+#le covariate non singificative, fino ad ottenere un modello contenente solo covavriate significative
+#o un modello che ha una sola covariata. Parto rimuovendo quella con valore maggiore non significativa (Elevation)
+m.1 <- occu(~Water + TPI + TRI ~1, data = UFO1)
+m.1 
+#semplifico togliendo TPI
+m.2 <- occu(~Water + TRI ~1, data = UFO1)
+m.2
+
+##Water e TRI sono significativi
+
+#Seleziono il modello migliore andando a classificare i modelli ottenuti fino ad ora in base al valore dell'AIC.
+#Includo sempre il modello nullo come confronto. Per questo passaggio ho usato diversi metodi "equivalenti" di classifica e visualizzazione. 
+AIC1 <- data.frame(Model = c("null_model", 
+                             "m.env1", 
+                             "m.1", 
+                             "m.2"), 
+                   AIC = c(null_model@AIC, m.env1@AIC, m.1@AIC, m.2@AIC))
+AIC1
+
+modlist1<-list(null_model=null_model, m.env1=m.env1, m.1=m.1, m.2=m.2)
+aictab(modlist1, second.ord = F)
+
+#Il modello migliore è m.2 (più basso di tutti)
+
+## A2: MODELLI BIOLOGICI
+
+#Creo i modelli sulla detection contenenti covariate RAI 
+#Ripeto il test di multicollinearità per queste covariate RAI
+Springbok <- rai$RAI.Sprin
+Hare <- rai$RAI.Hare
+Hyena <- rai$RAI.Hyen
+
+d.df <- data.frame(Springbok, Hare, Hyena)
+
+vifcor(d.df)
+
+#no multicollinearità
+
+#Creo il modello più complesso per le covariate RAI
+
+m.rai <- occu(~RAI.Sprin + RAI.Hare + RAI.Hyen ~1, data = UFO1)
+m.rai
+
+#Come prima testo la GOODNESS OF FIT
+(pb <- parboot(m.rai, statistic=chisq, nsim=1000, parallel=FALSE))
+
+#Continuo rimuovendo ad una a una le covariate non significative. Parto con Sprin
+m.m1 <- occu(~RAI.Hare + RAI.Hyen ~1, data = UFO1)
+m.m1
+
+#Continuo, ora con Hyen
+m.m2 <- occu(~RAI.Hare ~1, data = UFO1)
+m.m2
+
+#Hare è significativa
+
+#confronto i modelli ottenuti in vari modi contro il modello nullo. 
+AIC2 <- data.frame(Model = c("null_model", 
+                             "m.rai", 
+                             "m.m1", 
+                             "m.m2"), 
+                   AIC = c(null_model@AIC, m.rai@AIC, m.m1@AIC, m.m2@AIC))
+AIC2
+
+modlist1<-list(null_model=null_model, m.rai=m.rai, m.m1=m.m1, m.m2=m.m2)
+aictab(modlist1, second.ord = F)
+
+#il modello migliore è m.m1
+
+##B: Testo ora su Occupancy (PSI) mantenendo p costante. 
+
+#B1: Parto creando i MODELLI PIù COMPLESSI   
+#### con covariate AMBIENTALI
+m.env <- occu(~ 1 ~ Elevation + TPI + TRI + Water, data=UFO1 )
+m.env
+
+#Testo la GOODNESS OF FIT
+(pb <- parboot(m.env, statistic=chisq, nsim=1000, parallel=FALSE))
+#semplifico il modello più complesso rimuovendo le covariate non significative
+#Parto da TPI, la più alta
+psi.1 <- occu(~ 1 ~ Elevation + TRI + Water, data=UFO1)
+psi.1
+
+#Continuo con la seconda più alta, TRI
+psi.2 <- occu(~ 1 ~ Elevation +  Water, data=UFO1)
+psi.2
+
+#Tolgo anche Water, lasciando solo Elevation
+psi.3 <- occu(~ 1 ~ Elevation, data=UFO1)
+psi.3
+
+#Elevation è significativa
+
+#Seleziono il modello migliore per l'occupancy andando a classificare i modelli ottenuti fino ad ora in base al valore dell'AIC. Includo sempre il modello nullo come confronto. Per questo passaggio ho usato diversi metodi "equivalenti" di classifica e visualizzazione. 
+AIC.psienv <- data.frame(Model = c("null_model",
+                                   "m.env", 
+                                   "psi.1", 
+                                   "psi.2", 
+                                   "psi.3"), 
+                         AIC = c(null_model@AIC, m.env@AIC, psi.1@AIC, psi.2@AIC, psi.3@AIC))
+AIC.psienv
+
+modlist2<-list(null_model=null_model,m.env=m.env, psi.1=psi.1, psi.2=psi.2, psi.3=psi.3)
+aictab(modlist2, second.ord = F)
+
+#Il mdello migliore è psi.3
+
+#B2: con COVARIATE RAI   
+#solo BIOLOGICHE. Creo il modello pi? complesso:
+psi.all <- occu(~1~ RAI.Sprin + RAI.Hare + RAI.Hyen, data = UFO1)
+psi.all
+
+#Testo la GOODNESS OF FIT
+(pb <- parboot(psi.all, statistic=chisq, nsim=1000, parallel=FALSE))
+#Continuo come in precedenza semplificando il modello complesso
+#Tolgo il più alto, Hyen
+m.1 <- occu(~1~ RAI.Sprin + RAI.Hare, data = UFO1)
+m.1
+
+#Tolgo il più alto, Sprin
+m.2 <- occu(~1~ RAI.Hare, data = UFO1)
+m.2
+
+#Nessuna variabile significativa
+
+#Seleziono il modello migliore andando a classificare i modelli ottenuti fino ad ora in base al valore dell'AIC. Includo sempre il modello nullo come confronto. Per questo passaggio ho usato diversi metodi "equivalenti" di classifica e visualizzazione. 
+AIC.psibio <- data.frame(Model = c("null_model",
+                                   "psi.all", 
+                                   "m.1", 
+                                   "m.2"), 
+                         AIC = c(null_model@AIC, psi.all@AIC, m.1@AIC, m.2@AIC))
+AIC.psibio
+
+modlist3<-list(null_model=null_model, psi.all=psi.all, m.1=m.1, m.2=m.2)
+aictab(modlist3, second.ord = F)
+
+
+#Il modello migliore è m.1
+
+
+####### COSTRUZIONE GRAFICI per le covariate significative (solo occupancy)
+# Plotto l'ELEVATION contro l'occupancy prob. 
+mod.1 <- occu(~ 1 ~ Elevation, data=UFO1 )
+elevation <- env$Elevation
+bh.1 <- predict(mod.1, type="state", newdata=as.data.frame(elevation), appenData=T)
+psi.bh.1 <- bh.1[,1]
+se.bh.1 <- bh.1[,2]
+elev <- environment$Elevation
+d3.df <- data.frame(psi.bh.1,elev)
+psi1.bh.1 <- ggplot(d3.df, aes(x = elev, y = psi.bh.1)) + geom_point(size = 3) + geom_errorbar(aes(ymin = (psi.bh.1-se.bh.1), ymax = (psi.bh.1+se.bh.1)), colour = "red", width = 0.0001) + labs(x = "Elevation", y = "??", title = "Covariate effect on habitat use") + theme(plot.title=element_text(face="bold")) + theme(axis.text.x=element_text(size=12), axis.text.y=element_text(size=12)) +  theme(text=element_text(size=15))
+psi1.bh.1
+
+#Plotto il TPI contro l'occupancy
+mod.2 <- occu(~ 1 ~ TPI, data=UFO1 )
+tpi <- env$TPI
+bh.2 <- predict(mod.2, type="state", newdata=as.data.frame(tpi), appenData=T)
+psi.bh.2 <- bh.2[,1]
+se.bh.2 <- bh.2[,2]
+TPI <- environment$TPI
+d4.df <- data.frame(psi.bh.2,TPI)
+psi2.bh.2 <- ggplot(d4.df, aes(x = TPI, y = psi.bh.2)) + geom_point(size = 3) + geom_errorbar(aes(ymin = (psi.bh.2-se.bh.2), ymax = (psi.bh.2+se.bh.2)), colour = "red", width = 0.0001) + labs(x = "TPI", y = "??") + theme(plot.title=element_text(face="bold")) + theme(axis.text.x=element_text(size=12), axis.text.y=element_text(size=12)) +  theme(text=element_text(size=15))
+psi2.bh.2
+mod.2
+
+#UNISCO i due grafici nello stesso output
+ggarrange(psi1.bh.1, psi2.bh.2, ncol = 1, nrow = 2)
+
+
+###Costruisco I grafici BARPLOT PER RAI E NAIVE OCCU ALL SP.
+graf <- read.table("all.sp.csv",header=T,sep=",",dec=",")
+graf<-graf[-30,]
+graf$RAI <- as.numeric(graf$RAI)
+graf$no <- as.numeric(graf$no)
+
+graf[order(graf$RAI),  ]
+d.fr <- graf[order(graf$RAI, decreasing=T),  ]
+par(mar=c(4,12,2,3))
+
+barplot(d.fr$RAI, names.arg=d.fr$ID, horiz=T, xlim=c(0,50), las=1, main = "Relative Abundance Index" , font=3, xlab="RAI",col=rainbow(n=30))
+
+d.fr <- graf[order(graf$no, decreasing=T),  ]
+barplot(d.fr$no, names.arg=d.fr$ID, horiz=T, xlim=c(0,1), las=1, main = "N?ive Occupancy" , font=3, xlab="Naive occupancy", col=heat.colors(n=35))
