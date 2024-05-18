@@ -306,7 +306,18 @@ psi.bh.1 <- bh.1[,1]
 se.bh.1 <- bh.1[,2]
 elev <- environment$Elevation
 d3.df <- data.frame(psi.bh.1,elev)
-psi1.bh.1 <- ggplot(d3.df, aes(x = elev, y = psi.bh.1)) + geom_point(size = 3) + geom_errorbar(aes(ymin = (psi.bh.1-se.bh.1), ymax = (psi.bh.1+se.bh.1)), colour = "red", width = 0.0001) + labs(x = "Elevation", y = "??", title = "Covariate effect on habitat use") + theme(plot.title=element_text(face="bold")) + theme(axis.text.x=element_text(size=12), axis.text.y=element_text(size=12)) +  theme(text=element_text(size=15))
+psi1.bh.1 <- ggplot(d3.df, aes(x = elev, 
+                               y = psi.bh.1))
++ geom_point(size = 3)
++ geom_errorbar(aes(ymin = (psi.bh.1-se.bh.1),
+                    ymax = (psi.bh.1+se.bh.1)),
+                colour = "red", width = 0.0001)
++ labs(x = "Elevation", y = "??", title = "Covariate effect on habitat use")
++ theme(plot.title=element_text(face="bold"))
++ theme(axis.text.x=element_text(size=12),
+        axis.text.y=element_text(size=12))
++  theme(text=element_text(size=15))
+
 psi1.bh.1
 
 #Plotto il TPI contro l'occupancy
@@ -317,7 +328,17 @@ psi.bh.2 <- bh.2[,1]
 se.bh.2 <- bh.2[,2]
 TPI <- environment$TPI
 d4.df <- data.frame(psi.bh.2,TPI)
-psi2.bh.2 <- ggplot(d4.df, aes(x = TPI, y = psi.bh.2)) + geom_point(size = 3) + geom_errorbar(aes(ymin = (psi.bh.2-se.bh.2), ymax = (psi.bh.2+se.bh.2)), colour = "red", width = 0.0001) + labs(x = "TPI", y = "??") + theme(plot.title=element_text(face="bold")) + theme(axis.text.x=element_text(size=12), axis.text.y=element_text(size=12)) +  theme(text=element_text(size=15))
+psi2.bh.2 <- ggplot(d4.df, aes(x = TPI, 
+                               y = psi.bh.2))
++ geom_point(size = 3) + 
+  geom_errorbar(aes(ymin = (psi.bh.2-se.bh.2), 
+                    ymax = (psi.bh.2+se.bh.2)), 
+                colour = "red", width = 0.0001)
++ labs(x = "TPI", y = "??")
++ theme(plot.title=element_text(face="bold"))
++ theme(axis.text.x=element_text(size=12), axis.text.y=element_text(size=12))
++  theme(text=element_text(size=15))
+
 psi2.bh.2
 mod.2
 
@@ -335,7 +356,15 @@ graf[order(graf$RAI),  ]
 d.fr <- graf[order(graf$RAI, decreasing=T),  ]
 par(mar=c(4,12,2,3))
 
-barplot(d.fr$RAI, names.arg=d.fr$ID, horiz=T, xlim=c(0,50), las=1, main = "Relative Abundance Index" , font=3, xlab="RAI",col=rainbow(n=30))
+barplot(d.fr$RAI, names.arg=d.fr$ID,
+        horiz=T, xlim=c(0,50),
+        las=1, main = "Relative Abundance Index",
+        font=3, xlab="RAI",col=rainbow(n=30))
 
 d.fr <- graf[order(graf$no, decreasing=T),  ]
-barplot(d.fr$no, names.arg=d.fr$ID, horiz=T, xlim=c(0,1), las=1, main = "N?ive Occupancy" , font=3, xlab="Naive occupancy", col=heat.colors(n=35))
+barplot(d.fr$no,
+        names.arg=d.fr$ID,
+        horiz=T, xlim=c(0,1),
+        las=1, main = "N?ive Occupancy" ,
+        font=3, xlab="Naive occupancy",
+        col=heat.colors(n=35))
