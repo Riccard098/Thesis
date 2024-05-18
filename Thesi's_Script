@@ -12,7 +12,7 @@ library(readr)
 
 
 #Assegno i valori di sampling effort per il periodo di studio, il numero di siti occupati dallo sciacallo, il numero totale dei siti e il numero di detection indipendenti per la specie.
-sampling.effort <-4379   #numero di giorni dello studio x numero fototrappole (52-4, ovvero 44,46, 47, 48) + 11 (gg di funzionamento della FR47)
+sampling.effort <-4379   #numero di giorni dello studio * numero fototrappole (52-4, ovvero 44,46, 47, 48) + 11 (gg di funzionamento della FR47)
 occu.site <- 28
 tot.site <- 52
 detections <- 170 
@@ -79,15 +79,17 @@ UFO1 <- unmarkedFrameOccu(y = Dets, siteCovs = cov, obsCovs = NULL)
 summary(UFO1)
 
 #############   MODELLO NULLO #####################
-#creo il primo modello: modello nullo (SENZA covariate) #-#di probablitià di occupancy e probabilità di rilevamento
+#creo il primo modello: modello nullo (SENZA covariate) #-#di occupancy e probabilità di rilevamento
 null_model <- occu(~1 ~1, data = UFO1)
 null_model
 
 #i risultati sono in logit (da +∞ a -∞), eseguo una back transformation per farle assumere un valore tra 0 e 1.
-#-#probabilità di occupancy
+#-#occupancy
 null.psi <- backTransform(null_model, type = "state")
 null.psi
-# Jackal occurs at X (0.57) of the sites (slightly higher than naive occ, 0.53) #-#probabilità di rilevamento
+# Jackal occurs at X (0.57) of the sites (slightly higher than naive occ, 0.53) 
+
+#-#probabilità di rilevamento
 null.p <- backTransform(null_model, type = "det")
 null.p
 # Calcolo l'intervallo di confidenza delle probabilità di occupancy e rilevamento:
@@ -130,9 +132,16 @@ chisq <- function(fm) {
   y[is.na(fv)] <- NA
   sum((y-fv)^2/(fv*(1-fv)), na.rm=TRUE)
 }
+
 #Eseguo la parboot function basata sul chi-square e settata a 1000 repliche
 pb <- parboot(m.env1, statistic=chisq, nsim=1000, parallel=FALSE)
 pb
+
+#ALTERNATIVA: Likelihood-Ratio-Test
+lrt_test_1 <- lrtest(null_model, m.env1) #dove m.env1 è il modello più complesso con le variabili ambientali.
+print(lrt_test_1) 
+# In questo caso, se il risultante p-value È significativo, significa che 
+#il modello più complesso fitta bene i dati e, quindi, può essere tenuto in considerazione
 
 #Continuo semplificando il modello più complesso andando a rimuovere a una a una 
 #le covariate non singificative, fino ad ottenere un modello contenente solo covavriate significative
@@ -180,6 +189,12 @@ m.rai
 
 #Come prima testo la GOODNESS OF FIT
 (pb <- parboot(m.rai, statistic=chisq, nsim=1000, parallel=FALSE))
+#ALTERNATIVA: Likelihood-Ratio-Test
+lrt_test_2 <- lrtest(null_model, m.rai) #dove m.rai è il modello più complesso con le variabili biologiche.
+print(lrt_test_2) 
+
+# In questo caso, se il risultante p-value È significativo, significa che 
+#il modello più complesso fitta bene i dati e, quindi, può essere tenuto in considerazione
 
 #Continuo rimuovendo ad una a una le covariate non significative. Parto con Sprin
 m.m1 <- occu(~RAI.Hare + RAI.Hyen ~1, data = UFO1)
@@ -213,6 +228,9 @@ m.env
 
 #Testo la GOODNESS OF FIT
 (pb <- parboot(m.env, statistic=chisq, nsim=1000, parallel=FALSE))
+#ALTERNATIVA: Likelihood-Ratio-Test
+lrt_test_3 <- lrtest(null_model, m.env) #dove m.env è il modello più complesso con le variabili ambientali.
+print(lrt_test_3)
 #semplifico il modello più complesso rimuovendo le covariate non significative
 #Parto da TPI, la più alta
 psi.1 <- occu(~ 1 ~ Elevation + TRI + Water, data=UFO1)
@@ -243,12 +261,16 @@ aictab(modlist2, second.ord = F)
 #Il mdello migliore è psi.3
 
 #B2: con COVARIATE RAI   
-#solo BIOLOGICHE. Creo il modello pi? complesso:
+#solo BIOLOGICHE. Creo il modello più complesso:
 psi.all <- occu(~1~ RAI.Sprin + RAI.Hare + RAI.Hyen, data = UFO1)
 psi.all
 
 #Testo la GOODNESS OF FIT
 (pb <- parboot(psi.all, statistic=chisq, nsim=1000, parallel=FALSE))
+#ALTERNATIVA: Likelihood-Ratio-Test
+lrt_test_4 <- lrtest(null_model, psi.all) #dove psi.all è il modello più complesso con le variabili biologiche.
+print(lrt_test_4) 
+
 #Continuo come in precedenza semplificando il modello complesso
 #Tolgo il più alto, Hyen
 m.1 <- occu(~1~ RAI.Sprin + RAI.Hare, data = UFO1)
