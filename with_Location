@@ -35,7 +35,7 @@ Dets
 UFO <- unmarkedFrameOccu(y = as.matrix(Dets))
 summary(UFO)
 #Carico il dataframe con le covariate ambientali
-CTTable <- read_delim("environmentc.csv", delim = ";", 
+CTTable <- read_delim("environmentV.csv", delim = ";", 
                       escape_double = FALSE, trim_ws = TRUE)
 CTTable
 #rimuovo la colonna dei siti
@@ -116,14 +116,15 @@ nullCI.p
 Water <- env$Water
 TPI <- env$TPI
 TRI <- env$TRI
-d.df <- data.frame(TPI, Water, TRI)
+Location <- env$Location
+d.df <- data.frame(Location, TPI, Water, TRI)
 
 vifcor(d.df) 
 
 ##visto che i valori sono  minori 3, tutto ok, non c'è multicollinearità
 
 #creo modello più complesso
-m.env1 <- occu(~effort + TPI + TRI + Water~1, data = UFO1)
+m.env1 <- occu(~effort + Location + TPI + TRI + Water~1, data = UFO1)
 m.env1
 
 #Eseguo il test della GOODNESS OF FIT. Per prima cosa creo la funzione per calcolare il chi-square
@@ -140,16 +141,18 @@ chisq <- function(fm) {
 }
 
 #Eseguo la parboot function basata sul chi-square e settata a 1000 repliche
-pb <- parboot(m.env1, statistic=chisq, nsim=1000, parallel=FALSE)
-pb
+pb.1 <- parboot(m.env1, statistic=chisq, nsim=1000, parallel=FALSE)
+pb.1
+
 
 #Continuo semplificando il modello più complesso andando a rimuovere a una a una 
 #le covariate non singificative, fino ad ottenere un modello contenente solo covavriate significative
 #o un modello che ha una sola covariata. Parto rimuovendo quella con valore maggiore non significativa (Elevation)
-
+m.1 <- occu(~effort + Water + TPI + TRI ~1, data = UFO1)
+m.1 
 #semplifico togliendo TPI
-m.1 <- occu(~effort + Water + TRI ~1, data = UFO1)
-m.1
+m.2 <- occu(~effort + Water + TRI ~1, data = UFO1)
+m.2
 
 ##Water e TRI sono significativi
 
@@ -157,14 +160,15 @@ m.1
 #Includo sempre il modello nullo come confronto. Per questo passaggio ho usato diversi metodi "equivalenti" di classifica e visualizzazione. 
 AIC1 <- data.frame(Model = c("null_model", 
                              "m.env1", 
-                             "m.1"), 
-                   AIC = c(null_model@AIC, m.env1@AIC, m.1@AIC))
+                             "m.1", 
+                             "m.2"), 
+                   AIC = c(null_model@AIC, m.env1@AIC, m.1@AIC, m.2@AIC))
 AIC1
 
-modlist1<-list(null_model=null_model, m.env1=m.env1, m.1=m.1)
+modlist1<-list(null_model=null_model, m.env1=m.env1, m.1=m.1, m.2=m.2)
 aictab(modlist1, second.ord = F)
 
-#Il modello migliore è m.1
+#Il modello migliore è m.2
 
 ## A2: MODELLI BIOLOGICI
 
@@ -186,7 +190,8 @@ m.rai <- occu(~effort + RAI.Sprin + RAI.Hare + RAI.Hyen ~1, data = UFO1)
 m.rai
 
 #Come prima testo la GOODNESS OF FIT
-(pb <- parboot(m.rai, statistic=chisq, nsim=1000, parallel=FALSE))
+(pb.2 <- parboot(m.rai, statistic=chisq, nsim=1000, parallel=FALSE))
+
 
 #Continuo rimuovendo ad una a una le covariate non significative. Parto con Sprin
 m.m1 <- occu(~effort + RAI.Hare + RAI.Hyen ~1, data = UFO1)
@@ -220,35 +225,39 @@ aictab(modlist2, second.ord = F)
 
 #B1: Parto creando i MODELLI PIù COMPLESSI   
 #### con covariate AMBIENTALI
-m.psi <- occu(~ 1 ~ TPI + TRI + Water, data=UFO1 )
+m.psi <- occu(~ 1 ~ Location + TPI + TRI + Water, data=UFO1 )
 m.psi
 
 #Testo la GOODNESS OF FIT
-(pb <- parboot(m.psi, statistic=chisq, nsim=1000, parallel=FALSE))
+(pb.3 <- parboot(m.psi, statistic=chisq, nsim=1000, parallel=FALSE))
 
-#Parto da TPI, la più alta
-psi.1 <- occu(~ 1 ~ TRI + Water, data=UFO1)
+
+psi.1 <- occu(~ 1 ~ Location + TRI + Water, data=UFO1)
 psi.1
 
 #Continuo con la seconda più alta, TRI
-psi.2 <- occu(~ 1 ~ Water, data=UFO1)
+psi.2 <- occu(~ 1 ~ Location +  Water, data=UFO1)
 psi.2
 
+#Tolgo anche Water, lasciando solo Location
+psi.3 <- occu(~ 1 ~ Location, data=UFO1)
+psi.3
 
-#Nessuna variabile significativa
+#Nessuna variabile è significativa
 
 #Seleziono il modello migliore per l'occupancy andando a classificare i modelli ottenuti fino ad ora in base al valore dell'AIC. Includo sempre il modello nullo come confronto. Per questo passaggio ho usato diversi metodi "equivalenti" di classifica e visualizzazione. 
 AIC.psienv <- data.frame(Model = c("null_model",
-                                   "m.psi",
-                                   "psi.1",
-                                   "psi.2"),
-                         AIC = c(null_model@AIC, m.psi@AIC, psi.1@AIC, psi.2@AIC))
+                                   "m.psi", 
+                                   "psi.1", 
+                                   "psi.2", 
+                                   "psi.3"), 
+                         AIC = c(null_model@AIC, m.psi@AIC, psi.1@AIC, psi.2@AIC, psi.3@AIC))
 AIC.psienv
 
-modlist3<-list(null_model=null_model,m.psi=m.psi, psi.1=psi.1, psi.2=psi.2)
+modlist3<-list(null_model=null_model,m.psi=m.psi, psi.1=psi.1, psi.2=psi.2, psi.3=psi.3)
 aictab(modlist3, second.ord = F)
 
-#Il mdello migliore è il modello nullo.
+#Il mdello migliore è psi.3
 
 #B2: con COVARIATE RAI   
 #solo BIOLOGICHE. Creo il modello più complesso:
@@ -256,7 +265,8 @@ psi.all <- occu(~1~ RAI.Sprin + RAI.Hare + RAI.Hyen, data = UFO1)
 psi.all
 
 #Testo la GOODNESS OF FIT
-(pb <- parboot(psi.all, statistic=chisq, nsim=1000, parallel=FALSE))
+(pb.4 <- parboot(psi.all, statistic=chisq, nsim=1000, parallel=FALSE))
+
 
 #Continuo come in precedenza semplificando il modello complesso
 #Tolgo il più alto, Hyen
